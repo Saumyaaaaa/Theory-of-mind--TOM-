@@ -1,0 +1,12 @@
+{
+  "variable": { "prereqs": [] },
+  "constant": { "prereqs": [] },
+  "linear_equation": { "prereqs": ["variable", "constant"] },
+  "coordinate_plane": { "prereqs": [] },
+  "slope": { "prereqs": ["linear_equation", "coordinate_plane"] },
+  "y_intercept": { "prereqs": ["linear_equation", "coordinate_plane"] },
+  "slope_intercept_form": { "prereqs": ["slope", "y_intercept"] },
+  "function": { "prereqs": ["variable"] },
+  "rate_of_change": { "prereqs": ["slope", "function"] },
+  "system_of_equations": { "prereqs": ["linear_equation"] }
+}
