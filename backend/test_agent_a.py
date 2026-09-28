@@ -1,8 +1,12 @@
 import json
 import os
 import sys
+import warnings
 from pathlib import Path
 from dotenv import load_dotenv
+
+# Suppress SDK deprecation/advisory notices for clean output
+warnings.filterwarnings("ignore", category=UserWarning)
 
 # Ensure backend root is on Python module path
 BACKEND_DIR = Path(__file__).parent
@@ -103,10 +107,10 @@ def run_tests():
             assert 0.0 <= state.frustration_level <= 1.0, f"Frustration level out of bounds: {state.frustration_level}"
             assert isinstance(state.suggested_scaffolding_strategy, str) and len(state.suggested_scaffolding_strategy) > 0
 
-            print(f"✓ Schema validation passed: Probed='{state.concept_being_probed}', Outcome='{state.observed_outcome}', Frustration={state.frustration_level}")
+            print(f"[PASS] Schema validation passed: Probed='{state.concept_being_probed}', Outcome='{state.observed_outcome}', Frustration={state.frustration_level}")
 
         except Exception as e:
-            print(f"✗ Test failed with error: {e}")
+            print(f"[FAIL] Test failed with error: {e}")
             sys.exit(1)
 
     print("\n" + "=" * 70)

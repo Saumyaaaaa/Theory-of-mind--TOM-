@@ -1,6 +1,7 @@
 import json
 import os
 import time
+import warnings
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 from dotenv import load_dotenv
@@ -14,6 +15,7 @@ ENV_PATH = Path(__file__).parent / ".env"
 load_dotenv(dotenv_path=ENV_PATH)
 
 DEFAULT_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+FALLBACK_MODELS = ["gemini-2.5-flash", "gemini-3.5-flash-lite"]
 
 class Misconception(BaseModel):
     concept: str = Field(description="The concept name from the ontology that the misconception relates to")
@@ -72,12 +74,12 @@ def analyze_learner_turn(
     concept_graph: Dict[str, Any],
     api_key: Optional[str] = None,
     model: str = DEFAULT_MODEL,
-    max_retries: int = 2,
+    max_retries: int = 3,
 ) -> CognitiveState:
     """
     Invokes Agent A (Gemini Flash) with server-side structured output enforcement.
     Uses response_mime_type='application/json' and response_schema=CognitiveState.
-    Includes API retry logic for transient network/server errors.
+    Includes API retry logic with exponential backoff for transient 503 demand spikes.
     """
     key = api_key or os.environ.get("GEMINI_API_KEY")
     if not key:
@@ -111,31 +113,38 @@ Assess the learner's state now."""
         response_mime_type="application/json",
         response_schema=CognitiveState,
         temperature=0.1,
+        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
     )
 
+    models_to_try = [model] + [m for m in FALLBACK_MODELS if m != model]
     last_error = None
-    for attempt in range(1, max_retries + 2):
-        try:
-            response = client.models.generate_content(
-                model=model,
-                contents=user_prompt,
-                config=config,
-            )
 
-            if not response.text:
-                raise ValueError("Gemini returned an empty response.")
+    for candidate_model in models_to_try:
+        for attempt in range(1, max_retries + 1):
+            try:
+                response = client.models.generate_content(
+                    model=candidate_model,
+                    contents=user_prompt,
+                    config=config,
+                )
 
-            # Validate and parse directly into our Pydantic model
-            parsed_state = CognitiveState.model_validate_json(response.text)
-            return parsed_state
+                if not response.text:
+                    raise ValueError("Gemini returned an empty response.")
 
-        except (APIError, Exception) as e:
-            last_error = e
-            if attempt <= max_retries:
-                backoff = attempt * 2
-                print(f"[Agent A] API call failed (attempt {attempt}/{max_retries + 1}): {e}. Retrying in {backoff}s...")
-                time.sleep(backoff)
-            else:
-                break
+                # Validate and parse directly into our Pydantic model
+                parsed_state = CognitiveState.model_validate_json(response.text)
+                return parsed_state
 
-    raise RuntimeError(f"Agent A failed after {max_retries + 1} attempts: {last_error}")
+            except Exception as e:
+                last_error = e
+                err_str = str(e)
+                # If 503 or transient rate limit, back off and retry
+                if "503" in err_str or "UNAVAILABLE" in err_str or "429" in err_str:
+                    backoff = attempt * 3
+                    print(f"[Agent A] Demand spike on {candidate_model} (attempt {attempt}/{max_retries}). Retrying in {backoff}s...")
+                    time.sleep(backoff)
+                else:
+                    # Non-demand error: break to try fallback model
+                    break
+
+    raise RuntimeError(f"Agent A failed after trying models {models_to_try}: {last_error}")
