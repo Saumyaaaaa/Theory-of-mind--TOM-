@@ -7,6 +7,8 @@ interface ConceptGraphProps {
   mastery: Record<string, number>;
   probedConcept?: string | null;
   conceptGraph: Record<string, { prereqs: string[] }>;
+  onNodeClick?: (conceptKey: string) => void;
+  interactive?: boolean;
 }
 
 // Hierarchical layout layers for clean visualization
@@ -27,7 +29,8 @@ export function getMasteryColor(prob: number = 0.15) {
       bar: "bg-emerald-500",
       badgeBg: "bg-emerald-100",
       badgeText: "text-emerald-800",
-      label: "Mastered",
+      tierLabel: "Mastered",
+      isLocked: false,
     };
   }
   if (prob >= 0.60) {
@@ -38,7 +41,8 @@ export function getMasteryColor(prob: number = 0.15) {
       bar: "bg-sky-500",
       badgeBg: "bg-sky-100",
       badgeText: "text-sky-800",
-      label: "Advancing",
+      tierLabel: "Advancing",
+      isLocked: true,
     };
   }
   if (prob >= 0.35) {
@@ -49,7 +53,8 @@ export function getMasteryColor(prob: number = 0.15) {
       bar: "bg-amber-500",
       badgeBg: "bg-amber-100",
       badgeText: "text-amber-800",
-      label: "Developing",
+      tierLabel: "Developing",
+      isLocked: true,
     };
   }
   return {
@@ -59,7 +64,8 @@ export function getMasteryColor(prob: number = 0.15) {
     bar: "bg-rose-400",
     badgeBg: "bg-rose-100",
     badgeText: "text-rose-800",
-    label: "Locked",
+    tierLabel: "Novice",
+    isLocked: true,
   };
 }
 
@@ -67,27 +73,36 @@ export default function ConceptGraph({
   mastery = {},
   probedConcept,
   conceptGraph = {},
+  onNodeClick,
+  interactive = false,
 }: ConceptGraphProps) {
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between text-xs text-slate-500 pb-1 border-b border-slate-200">
-        <span className="font-semibold uppercase tracking-wider">Concept Dependency Ontology</span>
+      <div className="flex flex-wrap items-center justify-between text-xs text-slate-500 pb-1 border-b border-slate-200 gap-2">
         <div className="flex items-center space-x-2">
+          <span className="font-semibold uppercase tracking-wider text-[11px]">Domain Ontology Graph</span>
+          {interactive && (
+            <span className="text-[10px] text-indigo-600 bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 rounded font-medium">
+              Click node to toggle mastery
+            </span>
+          )}
+        </div>
+        <div className="flex items-center space-x-2 text-[10px]">
           <span className="flex items-center space-x-1">
             <span className="h-2 w-2 rounded-full bg-rose-400" />
-            <span>&lt;0.35</span>
+            <span>Novice (&lt;0.35)</span>
           </span>
           <span className="flex items-center space-x-1">
             <span className="h-2 w-2 rounded-full bg-amber-400" />
-            <span>0.35-0.6</span>
+            <span>Developing</span>
           </span>
           <span className="flex items-center space-x-1">
             <span className="h-2 w-2 rounded-full bg-sky-500" />
-            <span>0.6-0.85</span>
+            <span>Advancing</span>
           </span>
-          <span className="flex items-center space-x-1">
+          <span className="flex items-center space-x-1 font-bold text-emerald-700">
             <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            <span>&ge;0.85</span>
+            <span>Mastered (&ge;0.85)</span>
           </span>
         </div>
       </div>
@@ -98,12 +113,12 @@ export default function ConceptGraph({
           <div key={layerIdx} className="space-y-1">
             <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest px-1">
               {layerIdx === 0
-                ? "Foundational Prereqs"
+                ? "Level 0: Foundational Prereqs"
                 : layerIdx === 1
-                ? "Intermediate Structures"
+                ? "Level 1: Intermediate Structures"
                 : layerIdx === 2
-                ? "Core Geometric Concepts"
-                : "Composite Target Models"}
+                ? "Level 2: Core Geometric Concepts"
+                : "Level 3: Composite Target Models"}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
               {layer.map((conceptKey) => {
@@ -115,9 +130,11 @@ export default function ConceptGraph({
                 return (
                   <div
                     key={conceptKey}
+                    onClick={() => interactive && onNodeClick && onNodeClick(conceptKey)}
                     className={`relative rounded-lg p-2.5 border transition-all duration-200 shadow-sm ${colors.bg} ${colors.border} ${
                       isProbed ? "ring-2 ring-indigo-500 ring-offset-1" : ""
-                    }`}
+                    } ${interactive ? "cursor-pointer hover:shadow-md hover:scale-[1.01]" : ""}`}
+                    title={interactive ? `Click to toggle ${conceptKey} mastery override` : undefined}
                   >
                     {/* Active Probe Pill */}
                     {isProbed && (
@@ -139,16 +156,21 @@ export default function ConceptGraph({
                         )}
                       </div>
 
-                      <span
-                        className={`inline-flex items-center space-x-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${colors.badgeBg} ${colors.badgeText}`}
-                      >
-                        {prob >= 0.85 ? (
-                          <CheckCircle2 className="h-3 w-3" />
-                        ) : (
-                          <Lock className="h-2.5 w-2.5" />
-                        )}
-                        <span>{(prob * 100).toFixed(1)}%</span>
-                      </span>
+                      <div className="flex flex-col items-end space-y-0.5">
+                        <span
+                          className={`inline-flex items-center space-x-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${colors.badgeBg} ${colors.badgeText}`}
+                        >
+                          {prob >= 0.85 ? (
+                            <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                          ) : (
+                            <Lock className="h-2.5 w-2.5 text-slate-400" />
+                          )}
+                          <span>{(prob * 100).toFixed(0)}%</span>
+                        </span>
+                        <span className="text-[9px] font-medium text-slate-400">
+                          {colors.tierLabel} {colors.isLocked ? "(Locked)" : ""}
+                        </span>
+                      </div>
                     </div>
 
                     {/* Progress Bar */}

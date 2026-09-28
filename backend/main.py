@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Learner-State Scaffolding Tutor API",
     description="Dual-Agent Socratic Tutoring System with Cognitive State Scaffolding and Mechanical Verification",
-    version="0.6.0",
+    version="0.9.0",
     lifespan=lifespan,
 )
 
@@ -85,11 +85,16 @@ class ChatResponse(BaseModel):
     mastery: Dict[str, float]
     verification: Optional[VerificationMeta] = None
 
+class CounterfactualRequest(BaseModel):
+    session_id: str
+    modified_state: Optional[Dict[str, Any]] = None
+    modified_mastery: Optional[Dict[str, float]] = None
+
 @app.get("/")
 def read_root():
     return {
         "message": "Learner-State Scaffolding Tutor API is running.",
-        "phase": "Phase 6 - Full Dual-Agent Scaffolding Pipeline",
+        "phase": "Phase 9 - Counterfactual Engine & Full Suite",
     }
 
 @app.get("/health")
@@ -201,6 +206,79 @@ def chat_turn(req: ChatRequest):
         "verification": {
             "attempts_count": verifier_meta["attempts_count"],
             "used_fallback": verifier_meta["used_fallback"],
+            "mastered_concepts": mastered_concepts,
+            "locked_concepts": locked_concepts,
+        },
+    }
+
+@app.post("/counterfactual")
+def run_counterfactual(req: CounterfactualRequest):
+    """
+    Phase 9 Counterfactual Reasoning Endpoint:
+    Re-runs Agent B ONLY on the last user message with a modified cognitive state.
+    
+    CRITICAL ARCHITECTURAL PROPERTY:
+    Derives locked_concepts by feeding modified_mastery through the EXACT SAME
+    partition_concepts function from bkt.py (threshold = 0.85).
+    
+    Does NOT persist any modified state to SQLite.
+    Returns { real_reply, counterfactual_reply, modified_state, modified_mastery, verification }.
+    """
+    latest_snapshot = get_latest_snapshot(req.session_id)
+    if not latest_snapshot:
+        raise HTTPException(status_code=404, detail="Session not found.")
+
+    messages = get_messages(req.session_id)
+    if not messages:
+        raise HTTPException(status_code=400, detail="No messages in this session.")
+
+    # 1. Identify the last user message and the last assistant message (real_reply)
+    last_user_msg = None
+    real_reply = "No previous reply found."
+    for m in reversed(messages):
+        if m["role"] == "user" and last_user_msg is None:
+            last_user_msg = m
+        elif m["role"] == "assistant" and last_user_msg is not None:
+            real_reply = m["content"]
+            break
+
+    if not last_user_msg:
+        raise HTTPException(status_code=400, detail="No user message found to run counterfactual against.")
+
+    # 2. Build the modified state and modified mastery map
+    base_state = dict(latest_snapshot["state"])
+    base_mastery = dict(latest_snapshot["mastery"])
+
+    if req.modified_state:
+        base_state.update(req.modified_state)
+    if req.modified_mastery:
+        base_mastery.update(req.modified_mastery)
+
+    # 3. Derive locked_concepts using the EXACT SAME partition_concepts function from bkt.py
+    mastered_concepts, locked_concepts = partition_concepts(base_mastery, threshold=MASTERY_THRESHOLD)
+
+    # 4. Filter history prior to the last user message to preserve conversational context
+    history_before = [m for m in messages if m["created_at"] < last_user_msg["created_at"]]
+
+    # 5. Re-run Agent B ONLY through the mechanical verifier loop
+    cf_reply, cf_verifier_meta = generate_scaffolded_turn(
+        user_message=last_user_msg["content"],
+        conversation_history=history_before,
+        cognitive_state=base_state,
+        mastery_map=base_mastery,
+    )
+
+    # Return side-by-side results without SQLite mutation
+    return {
+        "session_id": req.session_id,
+        "user_message": last_user_msg["content"],
+        "real_reply": real_reply,
+        "counterfactual_reply": cf_reply,
+        "modified_state": base_state,
+        "modified_mastery": base_mastery,
+        "verification": {
+            "attempts_count": cf_verifier_meta["attempts_count"],
+            "used_fallback": cf_verifier_meta["used_fallback"],
             "mastered_concepts": mastered_concepts,
             "locked_concepts": locked_concepts,
         },
