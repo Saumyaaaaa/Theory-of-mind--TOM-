@@ -28,7 +28,7 @@ interface VerificationMeta {
   locked_concepts: string[];
 }
 
-const BACKEND_URL = "http://127.0.0.1:8000";
+const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const STORAGE_KEY = "learner_tutor_session_id";
 
 export default function ChatPage() {
