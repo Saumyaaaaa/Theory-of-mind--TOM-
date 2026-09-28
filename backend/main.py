@@ -15,8 +15,15 @@ from database import (
     get_snapshot_history,
     get_messages,
 )
+from agent_a import analyze_learner_turn, CognitiveState
+from bkt import (
+    update_concept_mastery_map,
+    partition_concepts,
+    MASTERY_THRESHOLD,
+)
+from agent_b import generate_scaffolded_turn
+from verifier import verify_reply
 
-# Load concept graph at startup
 CONCEPTS_FILE = Path(__file__).parent / "concepts.json"
 
 def load_concept_graph() -> dict:
@@ -28,29 +35,28 @@ def load_concept_graph() -> dict:
 concept_graph = load_concept_graph()
 
 def get_initial_mastery() -> Dict[str, float]:
-    """Initializes mastery probability for all concepts in ontology to a baseline prior (0.15)."""
+    """Initializes prior probability for all concepts in ontology to baseline prior (0.15)."""
     return {concept: 0.15 for concept in concept_graph.keys()}
 
 def get_initial_cognitive_state() -> Dict[str, Any]:
     """Provides a valid starter cognitive state conforming to the schema."""
     return {
         "concept_being_probed": "variable",
-        "observed_outcome": "none",
+        "observed_outcome": "partially_correct",
         "current_misconceptions": [],
         "frustration_level": 0.0,
-        "suggested_scaffolding_strategy": "Welcome the learner and probe their understanding of basic variables.",
+        "suggested_scaffolding_strategy": "Welcome the learner warmly and introduce basic variables through an intuitive everyday container analogy.",
     }
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Initialize SQLite tables on startup
     init_db()
     yield
 
 app = FastAPI(
     title="Learner-State Scaffolding Tutor API",
-    description="Backend API for Socratic scaffolding tutor with cognitive state modeling",
-    version="0.2.0",
+    description="Dual-Agent Socratic Tutoring System with Cognitive State Scaffolding and Mechanical Verification",
+    version="0.6.0",
     lifespan=lifespan,
 )
 
@@ -67,16 +73,23 @@ class ChatRequest(BaseModel):
     session_id: str
     message: str
 
+class VerificationMeta(BaseModel):
+    attempts_count: int
+    used_fallback: bool
+    mastered_concepts: List[str]
+    locked_concepts: List[str]
+
 class ChatResponse(BaseModel):
     reply: str
     state: Dict[str, Any]
     mastery: Dict[str, float]
+    verification: Optional[VerificationMeta] = None
 
 @app.get("/")
 def read_root():
     return {
         "message": "Learner-State Scaffolding Tutor API is running.",
-        "phase": "Phase 2 - SQLite & Session / Chat Stubs",
+        "phase": "Phase 6 - Full Dual-Agent Scaffolding Pipeline",
     }
 
 @app.get("/health")
@@ -97,12 +110,14 @@ def new_session():
     init_state = get_initial_cognitive_state()
     init_mastery = get_initial_mastery()
     
-    # Save a system seed message and the initial state snapshot
-    seed_msg_id = save_message(session_id, role="system", content="Session initialized.")
+    # Save seed welcome message and initial state snapshot
+    welcome_text = "Hello! I'm your algebra tutor. What would you like to explore today, or shall we start with variables?"
+    seed_msg_id = save_message(session_id, role="assistant", content=welcome_text)
     save_state_snapshot(session_id, seed_msg_id, init_state, init_mastery)
     
     return {
         "session_id": session_id,
+        "reply": welcome_text,
         "state": init_state,
         "mastery": init_mastery,
     }
@@ -110,42 +125,85 @@ def new_session():
 @app.post("/chat", response_model=ChatResponse)
 def chat_turn(req: ChatRequest):
     """
-    Phase 2 stub:
-    - Stores the incoming user message
-    - Generates a stub echo reply
-    - Stores the assistant message
-    - Stores a state snapshot linked to this turn
-    - Returns { reply, state, mastery }
+    Phase 6 Real Pipeline (Strictly Sequential):
+    1. Retrieve prior state & mastery snapshot from SQLite.
+    2. Save user message to database.
+    3. Agent A ('Modeler'): Diagnoses concept probed, outcome, misconceptions, frustration.
+    4. Deterministic BKT Step: Updates mastery probability and derives mastered/locked lists.
+    5. Agent B ('Interlocutor') + Verifier Loop: Drafts reply, checks against locked terms & answer leaks, retries if needed.
+    6. Persist assistant reply & snapshot to SQLite.
+    7. Return reply, state, mastery, and verification telemetry.
     """
     latest_snapshot = get_latest_snapshot(req.session_id)
     if not latest_snapshot:
-        raise HTTPException(status_code=404, detail="Session not found. Please create a session via POST /session first.")
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found. Please create a session via POST /session first.",
+        )
     
-    # 1. Save user message to SQLite
+    prev_state = latest_snapshot["state"]
+    prev_mastery = latest_snapshot["mastery"]
+
+    # 1. Save user message
     user_msg_id = save_message(req.session_id, role="user", content=req.message)
-    
-    # 2. Stub reply (echo for Phase 2)
-    reply_text = f"Echo: {req.message}"
-    
-    # 3. Save assistant message to SQLite
+
+    # 2. Fetch conversation history for context
+    history = get_messages(req.session_id)
+
+    # 3. Agent A ('Modeler') - Hidden assessment
+    try:
+        agent_a_state: CognitiveState = analyze_learner_turn(
+            user_message=req.message,
+            conversation_history=history,
+            previous_state=prev_state,
+            concept_graph=concept_graph,
+        )
+        current_state = agent_a_state.model_dump()
+    except Exception as e:
+        print(f"[Chat] Agent A evaluation failed: {e}. Falling back to previous state.")
+        current_state = prev_state
+
+    # 4. Deterministic Python BKT Update Step (soft-evidence blend)
+    probed_concept = current_state.get("concept_being_probed", "variable")
+    observed_outcome = current_state.get("observed_outcome", "partially_correct")
+
+    updated_mastery = update_concept_mastery_map(
+        current_mastery_map=prev_mastery,
+        concept_being_probed=probed_concept,
+        observed_outcome=observed_outcome,
+        threshold=MASTERY_THRESHOLD,
+    )
+    mastered_concepts, locked_concepts = partition_concepts(updated_mastery)
+
+    # 5. Agent B ('Interlocutor') + Mechanical Verifier Loop
+    reply_text, verifier_meta = generate_scaffolded_turn(
+        user_message=req.message,
+        conversation_history=history,
+        cognitive_state=current_state,
+        mastery_map=updated_mastery,
+    )
+
+    # 6. Save assistant response to SQLite
     assistant_msg_id = save_message(req.session_id, role="assistant", content=reply_text)
-    
-    # 4. In Phase 2 stub, we carry over the state and mastery (real Agent A + BKT in later phases)
-    current_state = latest_snapshot["state"]
-    current_mastery = latest_snapshot["mastery"]
-    
-    # 5. Save state snapshot linked to this assistant turn
+
+    # 7. Persist turn snapshot
     save_state_snapshot(
         session_id=req.session_id,
         message_id=assistant_msg_id,
         state=current_state,
-        mastery=current_mastery,
+        mastery=updated_mastery,
     )
-    
+
     return {
         "reply": reply_text,
         "state": current_state,
-        "mastery": current_mastery,
+        "mastery": updated_mastery,
+        "verification": {
+            "attempts_count": verifier_meta["attempts_count"],
+            "used_fallback": verifier_meta["used_fallback"],
+            "mastered_concepts": mastered_concepts,
+            "locked_concepts": locked_concepts,
+        },
     }
 
 @app.get("/state/{session_id}")

@@ -2,7 +2,7 @@ import re
 from typing import Dict, List, NamedTuple, Optional, Set
 
 # Comprehensive domain aliases for linear algebra ontology concepts.
-# Maps each raw ontology identifier to its natural-language phrases and abbreviations.
+# Maps each raw ontology identifier to its natural-language phrases, abbreviations, and equations.
 CONCEPT_ALIASES: Dict[str, List[str]] = {
     "variable": ["variable", "variables", "unknown variable", "algebraic variable"],
     "constant": ["constant", "constants", "constant value", "constant term"],
@@ -33,8 +33,6 @@ CONCEPT_ALIASES: Dict[str, List[str]] = {
         "slope-intercept equation",
         "slope intercept equation",
         "y = mx + b",
-        "y=mx+b",
-        "y = mx+b",
     ],
     "function": ["function", "functions"],
     "rate_of_change": [
@@ -50,28 +48,37 @@ CONCEPT_ALIASES: Dict[str, List[str]] = {
     ],
 }
 
+# Regex heuristic for catching explicit answer leakage (e.g., "the answer is 8", "so x = 3")
+ANSWER_LEAK_PATTERN = re.compile(
+    r"\b(the\s+answer\s+is\s+[-+]?\d+|so\s+[a-z]\s*=\s*[-+]?\d+|therefore\s+[a-z]\s*=\s*[-+]?\d+)\b",
+    re.IGNORECASE,
+)
+
 class VerificationResult(NamedTuple):
     is_valid: bool
     leaked_concepts: List[str]
     leaked_terms: List[str]
+    answer_leak_detected: bool = False
 
 def normalize_text(text: str) -> str:
     """
     Normalizes text for robust lexical matching:
-    1. Converts to lowercase
-    2. Replaces underscores, hyphens, and slashes with single spaces
-    3. Normalizes common math expressions like 'y = mx + b'
-    4. Strips peripheral punctuation while preserving words and internal spaces
+    1. Converts to lowercase.
+    2. Inserts whitespace around math operators (=, +, -, *) so 'y=mx+b' -> 'y = mx + b'.
+    3. Replaces hyphens, underscores, and slashes with single spaces.
+    4. Strips extraneous punctuation while preserving words, internal spaces, and operators.
+    5. Collapses multiple whitespace characters into single space.
     """
     if not text:
         return ""
-    # Lowercase
     t = text.lower()
+    # Insert padding around math operators so unspaced formulas like 'y=mx+b' match spaced aliases
+    t = re.sub(r"([=+\-*])", r" \1 ", t)
     # Normalize hyphens, underscores, slashes to single spaces
     t = re.sub(r"[\-_\/]", " ", t)
-    # Remove stray punctuation but keep alphanumerics, spaces, and math symbols (+, =)
+    # Remove peripheral punctuation (quotes, periods, commas, colons, etc.)
     t = re.sub(r"[^\w\s+=]", " ", t)
-    # Collapse multiple whitespace characters into single space
+    # Collapse multiple whitespace characters into a single space
     t = " ".join(t.split())
     return t
 
@@ -82,11 +89,8 @@ def get_search_phrases_for_concept(concept: str) -> List[str]:
     - All known natural-language aliases normalized
     """
     phrases: Set[str] = set()
-    # Add normalized raw identifier
     phrases.add(normalize_text(concept))
-    # Add all aliases
-    aliases = CONCEPT_ALIASES.get(concept, [])
-    for a in aliases:
+    for a in CONCEPT_ALIASES.get(concept, []):
         norm_a = normalize_text(a)
         if norm_a:
             phrases.add(norm_a)
@@ -96,36 +100,41 @@ def verify_reply(draft_text: str, locked_concepts: List[str]) -> VerificationRes
     """
     Checks draft reply text against the list of locked concepts.
     Uses regex word boundaries so 'slope' does not falsely match within unrelated words,
-    while catching hyphenated ('y-intercept'), spaced ('y intercept'),
+    while catching hyphenated ('y-intercept'), spaced ('y intercept'), unspaced math ('y=mx+b'),
     snake_case ('y_intercept'), and uppercase/title-case variations.
 
-    Returns VerificationResult(is_valid, leaked_concepts, leaked_terms).
+    Also checks the secondary heuristic for outright answer leaks.
     """
-    if not draft_text or not locked_concepts:
+    if not draft_text:
         return VerificationResult(is_valid=True, leaked_concepts=[], leaked_terms=[])
 
     normalized_draft = normalize_text(draft_text)
     leaked_concepts: Set[str] = set()
     leaked_terms: List[str] = []
 
-    for concept in locked_concepts:
+    # 1. Lexical vocabulary leak check against locked concepts
+    for concept in (locked_concepts or []):
         search_phrases = get_search_phrases_for_concept(concept)
         for phrase in search_phrases:
-            # Match using word boundaries to avoid partial word collisions
-            # Escape regex special chars (like +, =) in phrases
             escaped_phrase = re.escape(phrase)
             pattern = rf"\b{escaped_phrase}\b"
             if re.search(pattern, normalized_draft):
                 leaked_concepts.add(concept)
                 leaked_terms.append(phrase)
-                # Break to next concept once one term from this concept is found
                 break
 
-    is_valid = len(leaked_concepts) == 0
+    # 2. Heuristic check for explicit answer leakage
+    answer_leak = bool(ANSWER_LEAK_PATTERN.search(draft_text))
+    if answer_leak:
+        leaked_terms.append("[HEURISTIC: DIRECT_ANSWER_LEAK]")
+
+    is_valid = (len(leaked_concepts) == 0) and not answer_leak
+
     return VerificationResult(
         is_valid=is_valid,
         leaked_concepts=sorted(list(leaked_concepts)),
         leaked_terms=leaked_terms,
+        answer_leak_detected=answer_leak,
     )
 
 def get_fallback_scaffolding_reply(
@@ -139,7 +148,7 @@ def get_fallback_scaffolding_reply(
     clean_concept = concept_being_probed.replace("_", " ")
     if strategy and len(strategy.strip()) > 0:
         return (
-            f"Let's take a step back and examine this step by step. "
+            f"Let's pause and look at what we have here. "
             f"What do you notice about how the numbers connect to each other in this problem?"
         )
     return (
