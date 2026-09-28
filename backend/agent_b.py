@@ -20,12 +20,13 @@ def build_agent_b_system_prompt(
     mastered_concepts: List[str],
     locked_concepts: List[str],
     concept_being_probed: str,
+    observed_outcome: str,
     misconceptions: List[Dict[str, str]],
     scaffolding_strategy: str,
 ) -> str:
     """
     Dynamically constructs Agent B's system prompt strictly adhering to
-    the current cognitive state constraints.
+    the current cognitive state constraints and pedagogical discipline.
     """
     mastered_str = ", ".join(mastered_concepts) if mastered_concepts else "None yet (beginner)"
     locked_str = ", ".join(locked_concepts) if locked_concepts else "None"
@@ -39,10 +40,11 @@ def build_agent_b_system_prompt(
     misconceptions_text = "\n".join(misconception_descriptions) if misconception_descriptions else "None detected."
 
     return f"""You are the Socratic Interlocutor (Agent B), the user-facing math tutor.
-Your mission is to guide the student toward understanding using gentle Socratic questioning.
+Your mission is to guide the student toward understanding using gentle, disciplined Socratic questioning.
 
 CURRENT LEARNER COGNITIVE MODEL:
 - Current Concept Being Probed: {concept_being_probed}
+- Observed Outcome on Latest Turn: {observed_outcome.upper()}
 - Mastered Concepts (Safe to reference & assume): {mastered_str}
 - Misconceptions Currently Diagnosed:
 {misconceptions_text}
@@ -59,9 +61,16 @@ STRICT CONSTRAINTS (MANDATORY ENFORCEMENT):
    Never state the final numeric or symbolic answer (e.g. do NOT say "the answer is...", "x = 4", etc.).
    Even if the student is struggling or asks for the answer, respond ONLY with a guiding question or partial breakdown that encourages them to take the next cognitive step.
 
-3. SOCRATIC POSTURE:
+3. NO FALSE AFFIRMATION ON INCORRECT / PARTIALLY CORRECT TURNS:
+   The student's answer was evaluated as: '{observed_outcome.upper()}'.
+   When the outcome is 'incorrect' or 'partially_correct', NEVER use false praise or affirming language ('good thought', 'nice try', 'great thinking', 'you are on the right track', 'almost') toward the substance of the answer.
+   Praising a wrong answer confuses the student into believing incorrect reasoning is sound.
+   You may acknowledge their input completely neutrally (e.g., "I see you're looking at that number at the end.", "Let's examine how each number behaves in this equation.", "Let's take a look at what each part does.") or go directly to the guiding question.
+   ONLY affirm the content ('Spot on!', 'Exactly right!') when the outcome is 'correct'.
+
+4. SOCRATIC POSTURE:
    Keep your response concise (1 to 3 sentences maximum).
-   Warm, conversational, and encouraging.
+   Warm, conversational, and direct.
    End with ONE targeted guiding question that directly enacts the scaffolding strategy.
 """
 
@@ -129,7 +138,7 @@ def generate_scaffolded_turn(
     """
     Executes Agent B within the mechanical Python Verifier loop:
     1. Derives mastered and locked concepts from BKT mastery.
-    2. Dynamically constructs the system prompt.
+    2. Dynamically constructs the system prompt with anti-sycophancy instructions.
     3. Drafts a response with Gemini Flash.
     4. Runs Python Verifier to check for locked terms and answer leaks.
     5. If verified: returns response immediately.
@@ -144,6 +153,7 @@ def generate_scaffolded_turn(
 
     mastered_concepts, locked_concepts = partition_concepts(mastery_map)
     concept_being_probed = cognitive_state.get("concept_being_probed", "variable")
+    observed_outcome = cognitive_state.get("observed_outcome", "partially_correct")
     misconceptions = cognitive_state.get("current_misconceptions", [])
     scaffolding_strategy = cognitive_state.get(
         "suggested_scaffolding_strategy", "Guide the student with a clarifying question."
@@ -153,6 +163,7 @@ def generate_scaffolded_turn(
         mastered_concepts=mastered_concepts,
         locked_concepts=locked_concepts,
         concept_being_probed=concept_being_probed,
+        observed_outcome=observed_outcome,
         misconceptions=misconceptions,
         scaffolding_strategy=scaffolding_strategy,
     )
