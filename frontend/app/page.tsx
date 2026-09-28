@@ -31,6 +31,40 @@ interface VerificationMeta {
 const BACKEND_URL = (process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000").replace(/\/+$/, "");
 const STORAGE_KEY = "learner_tutor_session_id";
 
+/**
+ * Renders text with inline mathematical expressions styled cleanly (serif, italic, subtle badge)
+ * and strips raw LaTeX math delimiters ($x$, $n$, $x + 6$) while preserving actual currency ($6, $100).
+ */
+function FormattedMessage({ content, isUser }: { content: string; isUser?: boolean }) {
+  // Regex matches $...$ where the inner content has at least one letter [a-zA-Z]
+  // and no newlines or inner $, cleanly distinguishing math variables ($x$, $n$) from currency ($6).
+  const MATH_REGEX = /(\$(?!\s)[^$\n]*?[a-zA-Z][^$\n]*?(?<!\s)\$)/g;
+  const parts = content.split(MATH_REGEX);
+
+  return (
+    <p className="whitespace-pre-wrap">
+      {parts.map((part, idx) => {
+        if (part.startsWith("$") && part.endsWith("$") && part.length >= 3) {
+          const math = part.slice(1, -1);
+          return (
+            <span
+              key={idx}
+              className={`font-serif italic font-medium px-1 py-0.5 rounded text-[0.95em] mx-0.5 inline-block ${
+                isUser
+                  ? "text-indigo-200 bg-indigo-950/70 border border-indigo-700/40"
+                  : "text-indigo-700 bg-indigo-50/80 border border-indigo-200/50"
+              }`}
+            >
+              {math}
+            </span>
+          );
+        }
+        return <span key={idx}>{part}</span>;
+      })}
+    </p>
+  );
+}
+
 export default function ChatPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -359,7 +393,7 @@ export default function ChatPage() {
                       : "bg-white text-slate-800 border border-slate-200/80 rounded-tl-none"
                   }`}
                 >
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                  <FormattedMessage content={msg.content} isUser={isUser} />
                 </div>
               </div>
             );
