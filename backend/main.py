@@ -1,4 +1,5 @@
 import json
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -60,10 +61,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Enable CORS for local Next.js frontend development
+# Enable CORS for local Next.js frontend development and future Vercel deployment
+raw_allowed_origins = os.environ.get("ALLOWED_ORIGIN", "http://localhost:3000")
+allowed_origins = [o.strip() for o in raw_allowed_origins.split(",") if o.strip()]
+for default_origin in ["http://localhost:3000", "http://127.0.0.1:3000"]:
+    if default_origin not in allowed_origins:
+        allowed_origins.append(default_origin)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
