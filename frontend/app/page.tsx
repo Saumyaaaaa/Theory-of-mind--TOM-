@@ -171,6 +171,13 @@ export default function ChatPage() {
       });
 
       if (!res.ok) {
+        if (res.status === 429) {
+          const errData = await res.json().catch(() => null);
+          throw new Error(
+            errData?.detail ||
+              "This is a portfolio demo running on a shared free API quota — please try again in a bit."
+          );
+        }
         throw new Error(`Chat request failed with HTTP ${res.status}`);
       }
 
@@ -216,6 +223,14 @@ export default function ChatPage() {
 
   return (
     <div className="flex h-screen flex-col bg-slate-50 font-sans text-slate-900 overflow-hidden">
+      {/* Portfolio Demo Capacity Banner */}
+      <div className="bg-amber-50/95 border-b border-amber-200/80 px-4 py-1.5 text-center text-xs text-amber-900 flex items-center justify-center space-x-2 shrink-0 z-20">
+        <span className="inline-block h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+        <span>
+          <strong className="font-semibold">Portfolio Demo:</strong> Running on a shared free API quota (rate-limited to 20 messages/hr). Brief pauses may occasionally occur during Google demand spikes.
+        </span>
+      </div>
+
       {/* Top Navigation Bar */}
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 shadow-sm z-10">
         <div className="flex items-center space-x-3">

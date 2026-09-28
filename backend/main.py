@@ -3,9 +3,12 @@ import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.errors import RateLimitExceeded
 
 from database import (
     init_db,
@@ -71,10 +74,33 @@ for default_origin in ["http://localhost:3000", "http://127.0.0.1:3000"]:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def get_client_ip(request: Request) -> str:
+    """Extracts client IP, respecting reverse proxies (Render, Vercel, Cloudflare)."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    if request.client and request.client.host:
+        return request.client.host
+    return "127.0.0.1"
+
+limiter = Limiter(key_func=get_client_ip)
+app.state.limiter = limiter
+
+@app.exception_handler(RateLimitExceeded)
+async def custom_rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": "This is a portfolio demo running on a shared free API quota — please try again in a bit.",
+            "error": "rate_limit_exceeded",
+        },
+    )
 
 class ChatRequest(BaseModel):
     session_id: str
@@ -135,7 +161,8 @@ def new_session():
     }
 
 @app.post("/chat", response_model=ChatResponse)
-def chat_turn(req: ChatRequest):
+@limiter.limit("20/hour")
+def chat_turn(request: Request, req: ChatRequest):
     """
     Phase 6 Real Pipeline (Strictly Sequential):
     1. Retrieve prior state & mastery snapshot from SQLite.
@@ -220,7 +247,8 @@ def chat_turn(req: ChatRequest):
     }
 
 @app.post("/counterfactual")
-def run_counterfactual(req: CounterfactualRequest):
+@limiter.limit("20/hour")
+def run_counterfactual(request: Request, req: CounterfactualRequest):
     """
     Phase 9 Counterfactual Reasoning Endpoint:
     Re-runs Agent B ONLY on the last user message with a modified cognitive state.
