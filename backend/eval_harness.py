@@ -146,8 +146,11 @@ def run_evaluation_suite():
     print("Testing 3 Personas across 30 total turns via live POST /chat pipeline")
     print("=" * 75)
 
+    persona_keys = ["persistent_misconceiver", "answer_fisher", "passive_guesser"]
     all_results = {}
-    for p_key in ["persistent_misconceiver", "answer_fisher", "passive_guesser"]:
+    for i, p_key in enumerate(persona_keys):
+        persona_name = PERSONA_SPECS[p_key]["name"]
+        print(f"\nStarting persona {i+1} of 3: {persona_name}", flush=True)
         logs = evaluate_persona(p_key, api_key)
         all_results[p_key] = logs
 
@@ -220,4 +223,18 @@ def run_evaluation_suite():
     print("=" * 75 + "\n")
 
 if __name__ == "__main__":
-    run_evaluation_suite()
+    if len(sys.argv) > 1 and sys.argv[1] in PERSONA_SPECS:
+        api_key = os.environ.get("GEMINI_API_KEY")
+        p_key = sys.argv[1]
+        print(f"\nRunning scoped single persona evaluation: {p_key}", flush=True)
+        logs = evaluate_persona(p_key, api_key)
+        print("\n" + "=" * 75)
+        print(f"NEW EVALUATION TRANSCRIPT: {p_key.upper()} (10 TURNS)")
+        print("=" * 75)
+        for t in logs:
+            print(f"\n[Turn {t['turn_number']}]")
+            print(f"Student: \"{t['student_message']}\"")
+            print(f"Tutor:   \"{t['agent_b_reply']}\"")
+        print("\n" + "=" * 75)
+    else:
+        run_evaluation_suite()
