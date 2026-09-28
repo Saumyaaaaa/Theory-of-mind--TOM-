@@ -61,7 +61,11 @@ Given:
 
 Perform these exact evaluations:
 - concept_being_probed: Identify which concept from the ontology is being probed or addressed in this turn.
-- observed_outcome: Classify the learner's understanding in their latest answer as 'correct', 'incorrect', or 'partially_correct'.
+- observed_outcome: MUST only be classified as 'correct' or 'partially_correct' if the student demonstrates ACTUAL APPLICATION or REASONING about the concept:
+  * Correctly computing a value.
+  * Correctly identifying which part of an equation plays which role.
+  * Correctly explaining a relationship in their own words.
+  * CRITICAL RULE: Merely naming, mentioning, quoting, or asking to use a term or formula (e.g., saying "I know slope-intercept form" or "Let's use y=mx+b"), WITHOUT demonstrating understanding of it, MUST be classified as observed_outcome: 'incorrect', since naming a term provides zero evidence of comprehension.
 - current_misconceptions: If the learner exhibits confusion or a wrong premise, identify the concept and describe the misconception. If none, return an empty list [].
 - frustration_level: Estimate a score between 0.0 and 1.0 reflecting how confused, uncertain, or frustrated the learner sounds.
 - suggested_scaffolding_strategy: Provide a concise pedagogical hint for the user-facing tutor on how to guide the learner Socratically (e.g. asking a clarifying question, breaking down a formula, or referencing an earlier concept).

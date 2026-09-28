@@ -1,4 +1,4 @@
-from typing import Dict, List, Literal, Tuple
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple
 
 MASTERY_THRESHOLD = 0.85
 
@@ -76,16 +76,58 @@ def update_concept_mastery_map(
     updated_map[concept_being_probed] = new_prob
     return updated_map
 
+def get_effective_mastery(
+    concept: str,
+    mastery_map: Dict[str, float],
+    concept_graph: Dict[str, Any],
+    visited: Optional[Set[str]] = None,
+) -> float:
+    """
+    Computes effective mastery for a concept with structural prerequisite gating:
+    A composite concept's effective mastery can NEVER exceed the minimum effective
+    mastery of its prerequisites, regardless of what its own raw BKT probability says.
+    
+    Formula:
+        effective_mastery = min(own_raw_probability, min(effective_mastery of each prereq))
+    """
+    if visited is None:
+        visited = set()
+    if concept in visited:
+        return mastery_map.get(concept, 0.15)
+    visited.add(concept)
+
+    own_raw = mastery_map.get(concept, 0.15)
+    prereqs = concept_graph.get(concept, {}).get("prereqs", [])
+    if not prereqs:
+        return own_raw
+
+    prereq_masteries = [
+        get_effective_mastery(prereq, mastery_map, concept_graph, visited.copy())
+        for prereq in prereqs
+    ]
+    return min(own_raw, min(prereq_masteries))
+
 def partition_concepts(
     mastery_map: Dict[str, float],
+    concept_graph: Optional[Dict[str, Any]] = None,
     threshold: float = MASTERY_THRESHOLD,
 ) -> Tuple[List[str], List[str]]:
     """
     Deterministic partition into:
-    - mastered_concepts: p >= threshold
-    - locked_concepts: p < threshold
+    - mastered_concepts: effective_mastery >= threshold
+    - locked_concepts: effective_mastery < threshold
+    
+    When concept_graph is provided, enforces prerequisite gating via get_effective_mastery.
     Computed purely in Python, never delegated to an LLM.
     """
-    mastered = [concept for concept, prob in mastery_map.items() if prob >= threshold]
-    locked = [concept for concept, prob in mastery_map.items() if prob < threshold]
+    if concept_graph:
+        effective_map = {
+            c: get_effective_mastery(c, mastery_map, concept_graph)
+            for c in mastery_map
+        }
+    else:
+        effective_map = mastery_map
+
+    mastered = [concept for concept, prob in effective_map.items() if prob >= threshold]
+    locked = [concept for concept, prob in effective_map.items() if prob < threshold]
     return mastered, locked

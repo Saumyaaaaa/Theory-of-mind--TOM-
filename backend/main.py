@@ -178,7 +178,7 @@ def chat_turn(req: ChatRequest):
         observed_outcome=observed_outcome,
         threshold=MASTERY_THRESHOLD,
     )
-    mastered_concepts, locked_concepts = partition_concepts(updated_mastery)
+    mastered_concepts, locked_concepts = partition_concepts(updated_mastery, concept_graph=concept_graph)
 
     # 5. Agent B ('Interlocutor') + Mechanical Verifier Loop
     reply_text, verifier_meta = generate_scaffolded_turn(
@@ -186,6 +186,7 @@ def chat_turn(req: ChatRequest):
         conversation_history=history,
         cognitive_state=current_state,
         mastery_map=updated_mastery,
+        concept_graph=concept_graph,
     )
 
     # 6. Save assistant response to SQLite
@@ -254,8 +255,12 @@ def run_counterfactual(req: CounterfactualRequest):
     if req.modified_mastery:
         base_mastery.update(req.modified_mastery)
 
-    # 3. Derive locked_concepts using the EXACT SAME partition_concepts function from bkt.py
-    mastered_concepts, locked_concepts = partition_concepts(base_mastery, threshold=MASTERY_THRESHOLD)
+    # 3. Derive locked_concepts using the EXACT SAME partition_concepts function with structural prerequisite gating
+    mastered_concepts, locked_concepts = partition_concepts(
+        base_mastery,
+        concept_graph=concept_graph,
+        threshold=MASTERY_THRESHOLD,
+    )
 
     # 4. Filter history prior to the last user message to preserve conversational context
     history_before = [m for m in messages if m["created_at"] < last_user_msg["created_at"]]
@@ -266,6 +271,7 @@ def run_counterfactual(req: CounterfactualRequest):
         conversation_history=history_before,
         cognitive_state=base_state,
         mastery_map=base_mastery,
+        concept_graph=concept_graph,
     )
 
     # Return side-by-side results without SQLite mutation

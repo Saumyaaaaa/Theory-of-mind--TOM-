@@ -131,13 +131,14 @@ def generate_scaffolded_turn(
     conversation_history: List[Dict[str, str]],
     cognitive_state: Dict[str, Any],
     mastery_map: Dict[str, float],
+    concept_graph: Optional[Dict[str, Any]] = None,
     api_key: Optional[str] = None,
     model: str = DEFAULT_MODEL,
     max_verifier_retries: int = 2,
 ) -> Tuple[str, Dict[str, Any]]:
     """
     Executes Agent B within the mechanical Python Verifier loop:
-    1. Derives mastered and locked concepts from BKT mastery.
+    1. Derives mastered and locked concepts using structural prerequisite gating.
     2. Dynamically constructs the system prompt with anti-sycophancy instructions.
     3. Drafts a response with Gemini Flash.
     4. Runs Python Verifier to check for locked terms and answer leaks.
@@ -151,7 +152,7 @@ def generate_scaffolded_turn(
 
     client = genai.Client(api_key=key)
 
-    mastered_concepts, locked_concepts = partition_concepts(mastery_map)
+    mastered_concepts, locked_concepts = partition_concepts(mastery_map, concept_graph=concept_graph)
     concept_being_probed = cognitive_state.get("concept_being_probed", "variable")
     observed_outcome = cognitive_state.get("observed_outcome", "partially_correct")
     misconceptions = cognitive_state.get("current_misconceptions", [])
