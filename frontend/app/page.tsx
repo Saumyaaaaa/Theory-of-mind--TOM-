@@ -42,8 +42,25 @@ export default function ChatPage() {
   const [isDebugOpen, setIsDebugOpen] = useState(false);
   const [conceptGraph, setConceptGraph] = useState<Record<string, { prereqs: string[] }>>({});
   const [activeSnapshot, setActiveSnapshot] = useState<SnapshotItem | null>(null);
+  const [loadingSeconds, setLoadingSeconds] = useState(0);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Live timer for multi-agent pipeline execution feedback
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (isLoading) {
+      setLoadingSeconds(0);
+      interval = setInterval(() => {
+        setLoadingSeconds((prev) => prev + 1);
+      }, 1000);
+    } else {
+      setLoadingSeconds(0);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isLoading]);
 
   // Auto-scroll chat to latest message
   const scrollToBottom = () => {
@@ -358,7 +375,8 @@ export default function ChatPage() {
             <div className="rounded-2xl rounded-tl-none border border-slate-200 bg-white px-4 py-3 text-sm text-slate-500 shadow-sm flex items-center space-x-2">
               <Sparkles className="h-4 w-4 text-emerald-600 animate-spin" />
               <span className="text-xs">
-                Agent A diagnosing state &bull; Verifier checking constraints &bull; Agent B scaffolding...
+                Agent A diagnosing state &bull; Verifier checking constraints &bull; Agent B scaffolding...{" "}
+                <span className="font-mono text-slate-400 font-medium">({loadingSeconds}s)</span>
               </span>
             </div>
           </div>
