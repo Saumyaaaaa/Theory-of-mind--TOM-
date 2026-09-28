@@ -10,7 +10,9 @@ import {
   Sparkles,
   BookOpen,
   AlertCircle,
+  SlidersHorizontal,
 } from "lucide-react";
+import DebugPanel, { SnapshotItem } from "@/components/DebugPanel";
 
 interface Message {
   id?: string;
@@ -37,6 +39,10 @@ export default function ChatPage() {
   const [probedConcept, setProbedConcept] = useState<string | null>(null);
   const [verificationMeta, setVerificationMeta] = useState<VerificationMeta | null>(null);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const [isDebugOpen, setIsDebugOpen] = useState(false);
+  const [conceptGraph, setConceptGraph] = useState<Record<string, { prereqs: string[] }>>({});
+  const [activeSnapshot, setActiveSnapshot] = useState<SnapshotItem | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll chat to latest message
@@ -48,6 +54,22 @@ export default function ChatPage() {
     scrollToBottom();
   }, [messages, isLoading]);
 
+  // Load concept graph ontology
+  useEffect(() => {
+    const fetchOntology = async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/concept-graph`);
+        if (res.ok) {
+          const data = await res.json();
+          setConceptGraph(data);
+        }
+      } catch (e) {
+        console.warn("Failed to load concept ontology", e);
+      }
+    };
+    fetchOntology();
+  }, []);
+
   // Session initialization / resumption logic
   useEffect(() => {
     const initOrResumeSession = async () => {
@@ -56,7 +78,6 @@ export default function ChatPage() {
 
       if (savedSessionId) {
         try {
-          // Attempt to resume saved session
           const [msgRes, stateRes] = await Promise.all([
             fetch(`${BACKEND_URL}/messages/${savedSessionId}`),
             fetch(`${BACKEND_URL}/state/${savedSessionId}`),
@@ -68,8 +89,11 @@ export default function ChatPage() {
 
             setSessionId(savedSessionId);
             setMessages(msgData.messages || []);
-            if (stateData?.state?.concept_being_probed) {
-              setProbedConcept(stateData.state.concept_being_probed);
+            if (stateData) {
+              setActiveSnapshot(stateData);
+              if (stateData?.state?.concept_being_probed) {
+                setProbedConcept(stateData.state.concept_being_probed);
+              }
             }
             return;
           }
@@ -78,7 +102,6 @@ export default function ChatPage() {
         }
       }
 
-      // If no valid saved session, create new
       startNewSession();
     };
 
@@ -108,6 +131,14 @@ export default function ChatPage() {
         },
       ]);
       setProbedConcept(data.state?.concept_being_probed || "variable");
+      setActiveSnapshot({
+        id: "initial",
+        session_id: newSid,
+        message_id: "seed",
+        state: data.state,
+        mastery: data.mastery,
+        created_at: new Date().toISOString(),
+      });
       setVerificationMeta(null);
     } catch (err: any) {
       setErrorMsg(`Failed to connect to backend at ${BACKEND_URL}. Ensure uvicorn is running.`);
@@ -157,6 +188,15 @@ export default function ChatPage() {
       if (data.verification) {
         setVerificationMeta(data.verification);
       }
+
+      setActiveSnapshot({
+        id: "turn",
+        session_id: sessionId,
+        message_id: "latest",
+        state: data.state,
+        mastery: data.mastery,
+        created_at: new Date().toISOString(),
+      });
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to get reply from tutor.");
     } finally {
@@ -175,9 +215,9 @@ export default function ChatPage() {
   const visibleMessages = messages.filter((m) => m.role !== "system");
 
   return (
-    <div className="flex h-screen flex-col bg-slate-50 font-sans text-slate-900">
+    <div className="flex h-screen flex-col bg-slate-50 font-sans text-slate-900 overflow-hidden">
       {/* Top Navigation Bar */}
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 shadow-sm">
+      <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-6 shadow-sm z-10">
         <div className="flex items-center space-x-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-white shadow-sm">
             <BookOpen className="h-5 w-5" />
@@ -188,11 +228,11 @@ export default function ChatPage() {
                 Learner-State Scaffolding Tutor
               </h1>
               <span className="inline-flex items-center rounded-md bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700 ring-1 ring-inset ring-indigo-700/10">
-                Dual-Agent Socratic
+                Dual-Agent
               </span>
             </div>
             <p className="text-xs text-slate-500">
-              Cognitive Modeler (Agent A) &bull; BKT Tracker &bull; Mechanical Verifier &bull; Interlocutor (Agent B)
+              Cognitive Modeler &bull; BKT Tracker &bull; Verifier &bull; Socratic Interlocutor
             </p>
           </div>
         </div>
@@ -209,7 +249,7 @@ export default function ChatPage() {
           {verificationMeta && (
             <div className="hidden md:flex items-center space-x-1 rounded-md bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-700 border border-emerald-200">
               <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-              <span>Verified ({verificationMeta.attempts_count} attempt{verificationMeta.attempts_count > 1 ? "s" : ""})</span>
+              <span>Verified ({verificationMeta.attempts_count} att.)</span>
             </div>
           )}
 
@@ -220,7 +260,20 @@ export default function ChatPage() {
             title="Start a fresh session with reset mastery"
           >
             <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
-            <span>New Session</span>
+            <span>Reset</span>
+          </button>
+
+          {/* Debug Mode Toggle Button */}
+          <button
+            onClick={() => setIsDebugOpen((prev) => !prev)}
+            className={`inline-flex items-center space-x-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold shadow-sm transition ${
+              isDebugOpen
+                ? "bg-indigo-600 text-white hover:bg-indigo-700"
+                : "bg-slate-900 text-white hover:bg-slate-800"
+            }`}
+          >
+            <SlidersHorizontal className="h-3.5 w-3.5" />
+            <span>Debug Mode</span>
           </button>
         </div>
       </header>
@@ -325,7 +378,7 @@ export default function ChatPage() {
             </button>
           </form>
           <div className="mt-2 flex justify-between items-center text-[11px] text-slate-400 px-1">
-            <span>The Socratic tutor scaffolds without giving away answers.</span>
+            <span>Socratic tutor enforces hidden cognitive state constraints.</span>
             {sessionId && (
               <span className="font-mono text-slate-400 truncate max-w-[200px]" title={sessionId}>
                 Session: {sessionId.slice(0, 8)}...
@@ -334,6 +387,15 @@ export default function ChatPage() {
           </div>
         </div>
       </footer>
+
+      {/* Phase 8 Debug Panel Drawer */}
+      <DebugPanel
+        isOpen={isDebugOpen}
+        onClose={() => setIsDebugOpen(false)}
+        sessionId={sessionId}
+        conceptGraph={conceptGraph}
+        activeSnapshot={activeSnapshot}
+      />
     </div>
   );
 }
