@@ -78,6 +78,12 @@ export default function DebugPanel({
   const [cfResult, setCfResult] = useState<CounterfactualResult | null>(null);
   const [cfError, setCfError] = useState<string | null>(null);
 
+  // Compute current snapshot from history or fallback to active snapshot
+  const currentSnap: SnapshotItem | null =
+    history.length > 0 && currentIndex >= 0 && currentIndex < history.length
+      ? history[currentIndex]
+      : activeSnapshot;
+
   // Fetch history when panel opens or when active snapshot changes
   useEffect(() => {
     if (!sessionId || !isOpen) return;
@@ -103,16 +109,12 @@ export default function DebugPanel({
 
   // Sync baseline overriddenMastery when current snapshot changes
   useEffect(() => {
-    const base = currentSnap?.mastery || {};
-    setOverriddenMastery(base);
-  }, [currentIndex, history, activeSnapshot]);
+    if (currentSnap?.mastery) {
+      setOverriddenMastery(currentSnap.mastery);
+    }
+  }, [currentSnap]);
 
   if (!isOpen) return null;
-
-  const currentSnap: SnapshotItem | null =
-    history.length > 0 && currentIndex >= 0 && currentIndex < history.length
-      ? history[currentIndex]
-      : activeSnapshot;
 
   const totalSnapshots = history.length;
   const isViewingLive = isLiveMode || currentIndex === totalSnapshots - 1;
