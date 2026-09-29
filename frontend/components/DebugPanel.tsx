@@ -179,153 +179,163 @@ export default function DebugPanel({
   const probedConcept = currentState?.concept_being_probed || null;
 
   return (
-    <div className="fixed inset-y-0 right-0 z-50 flex w-full max-w-3xl flex-col bg-white shadow-2xl border-l border-slate-200 transition-transform duration-300">
-      {/* Header */}
-      <div className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 px-6 bg-slate-900 text-white">
-        <div className="flex items-center space-x-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-500 text-white">
-            <Network className="h-4 w-4" />
-          </div>
-          <div>
-            <h2 className="text-sm font-bold tracking-tight">Inspector &amp; Debug Console</h2>
-            <p className="text-[11px] text-slate-400">
-              Cognitive State Model &bull; BKT Knowledge Tracing &bull; Counterfactual Sandbox
-            </p>
-          </div>
-        </div>
+    <>
+      {/* Backdrop overlay for mobile & focus */}
+      <div
+        className="fixed inset-0 bg-slate-900/50 z-40 backdrop-blur-xs transition-opacity"
+        onClick={onClose}
+        aria-hidden="true"
+      />
 
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={handleLiveToggle}
-            className={`inline-flex items-center space-x-1 px-2.5 py-1 rounded text-xs font-semibold transition ${
-              isViewingLive
-                ? "bg-emerald-500 text-white"
-                : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-            }`}
-          >
-            <Radio className={`h-3 w-3 ${isViewingLive ? "animate-pulse" : ""}`} />
-            <span>Live Stream</span>
-          </button>
-
-          <button
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition"
-            title="Close Panel"
-          >
-            <X className="h-5 w-5" />
-          </button>
-        </div>
-      </div>
-
-      {/* History Scrubber Controls */}
-      <div className="border-b border-slate-200 bg-slate-50 px-6 py-3 shrink-0">
-        <div className="flex items-center justify-between text-xs text-slate-600 mb-2">
-          <div className="flex items-center space-x-1.5 font-medium">
-            <History className="h-3.5 w-3.5 text-indigo-600" />
-            <span>Turn-by-Turn History Scrubber:</span>
-            <span className="font-bold text-slate-900">
-              Turn {currentIndex + 1} of {totalSnapshots || 1}
-            </span>
-          </div>
-
-          {currentSnap?.created_at && (
-            <div className="flex items-center space-x-1 text-[11px] text-slate-400 font-mono">
-              <Clock className="h-3 w-3" />
-              <span>{new Date(currentSnap.created_at).toLocaleTimeString()}</span>
+      <div className="fixed inset-y-0 right-0 z-50 flex w-full sm:max-w-2xl lg:max-w-3xl flex-col bg-white shadow-2xl border-l border-slate-200 transition-transform duration-300">
+        {/* Header */}
+        <div className="flex h-14 sm:h-16 shrink-0 items-center justify-between border-b border-slate-200 px-3 sm:px-6 bg-slate-900 text-white">
+          <div className="flex items-center space-x-2 min-w-0">
+            <div className="flex h-7 w-7 sm:h-8 sm:w-8 shrink-0 items-center justify-center rounded-lg bg-indigo-500 text-white">
+              <Network className="h-4 w-4" />
             </div>
-          )}
+            <div className="min-w-0">
+              <h2 className="text-xs sm:text-sm font-bold tracking-tight truncate">Inspector &amp; Debug Console</h2>
+              <p className="hidden sm:block text-[11px] text-slate-400 truncate">
+                Cognitive State Model &bull; BKT Knowledge Tracing &bull; Counterfactual Sandbox
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-2 sm:space-x-3 shrink-0">
+            <button
+              onClick={handleLiveToggle}
+              className={`inline-flex items-center space-x-1 px-2 sm:px-2.5 py-1 rounded text-[11px] sm:text-xs font-semibold transition ${
+                isViewingLive
+                  ? "bg-emerald-500 text-white"
+                  : "bg-slate-800 text-slate-300 hover:bg-slate-700"
+              }`}
+            >
+              <Radio className={`h-3 w-3 ${isViewingLive ? "animate-pulse" : ""}`} />
+              <span className="hidden sm:inline">Live Stream</span>
+              <span className="sm:hidden">Live</span>
+            </button>
+
+            <button
+              onClick={onClose}
+              className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white transition"
+              title="Close Panel"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={() => handleScrub(currentIndex - 1)}
-            disabled={currentIndex <= 0}
-            className="rounded p-1 text-slate-600 hover:bg-slate-200 disabled:opacity-30 transition"
-            title="Step Back 1 Turn"
-          >
-            <ChevronLeft className="h-4 w-4" />
-          </button>
+        {/* History Scrubber Controls */}
+        <div className="border-b border-slate-200 bg-slate-50 px-3 sm:px-6 py-2 sm:py-3 shrink-0">
+          <div className="flex items-center justify-between text-xs text-slate-600 mb-1.5 sm:mb-2">
+            <div className="flex items-center space-x-1.5 font-medium text-[11px] sm:text-xs">
+              <History className="h-3.5 w-3.5 text-indigo-600 shrink-0" />
+              <span className="hidden sm:inline">Turn History:</span>
+              <span className="font-bold text-slate-900">
+                Turn {currentIndex + 1} of {totalSnapshots || 1}
+              </span>
+            </div>
 
-          <input
-            type="range"
-            min={0}
-            max={Math.max(0, totalSnapshots - 1)}
-            value={Math.max(0, currentIndex)}
-            onChange={(e) => handleScrub(parseInt(e.target.value, 10))}
-            disabled={totalSnapshots <= 1}
-            className="w-full accent-indigo-600 cursor-pointer disabled:opacity-40"
-          />
-
-          <button
-            onClick={() => handleScrub(currentIndex + 1)}
-            disabled={currentIndex >= totalSnapshots - 1}
-            className="rounded p-1 text-slate-600 hover:bg-slate-200 disabled:opacity-30 transition"
-            title="Step Forward 1 Turn"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </button>
-        </div>
-      </div>
-
-      {/* Mode Navigation Tabs */}
-      <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 shrink-0">
-        <div className="flex space-x-1">
-          <button
-            onClick={() => setActiveTab("graph")}
-            className={`flex items-center space-x-1.5 py-2.5 px-3 text-xs font-semibold border-b-2 transition ${
-              activeTab === "graph"
-                ? "border-indigo-600 text-indigo-600"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            <Network className="h-3.5 w-3.5" />
-            <span>Concept Graph</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("counterfactual")}
-            className={`flex items-center space-x-1.5 py-2.5 px-3 text-xs font-semibold border-b-2 transition ${
-              activeTab === "counterfactual"
-                ? "border-indigo-600 text-indigo-600"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            <SplitSquareVertical className="h-3.5 w-3.5" />
-            <span>Counterfactual Sandbox</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab("json")}
-            className={`flex items-center space-x-1.5 py-2.5 px-3 text-xs font-semibold border-b-2 transition ${
-              activeTab === "json"
-                ? "border-indigo-600 text-indigo-600"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            <Code2 className="h-3.5 w-3.5" />
-            <span>Raw JSON State</span>
-          </button>
-        </div>
-
-        {/* Counterfactual Quick Run Trigger */}
-        <div className="flex items-center space-x-2">
-          <button
-            onClick={handleRunCounterfactual}
-            disabled={isCfRunning || !sessionId}
-            className="inline-flex items-center space-x-1.5 rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50 transition"
-          >
-            {isCfRunning ? (
-              <Sparkles className="h-3 w-3 animate-spin" />
-            ) : (
-              <Play className="h-3 w-3 fill-current" />
+            {currentSnap?.created_at && (
+              <div className="flex items-center space-x-1 text-[10px] sm:text-[11px] text-slate-400 font-mono">
+                <Clock className="h-3 w-3" />
+                <span>{new Date(currentSnap.created_at).toLocaleTimeString()}</span>
+              </div>
             )}
-            <span>Re-run with Changes</span>
-          </button>
-        </div>
-      </div>
+          </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto p-6 space-y-5 bg-slate-50/50">
+          <div className="flex items-center space-x-2 sm:space-x-3">
+            <button
+              onClick={() => handleScrub(currentIndex - 1)}
+              disabled={currentIndex <= 0}
+              className="rounded p-1 text-slate-600 hover:bg-slate-200 disabled:opacity-30 transition"
+              title="Step Back 1 Turn"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+
+            <input
+              type="range"
+              min={0}
+              max={Math.max(0, totalSnapshots - 1)}
+              value={Math.max(0, currentIndex)}
+              onChange={(e) => handleScrub(parseInt(e.target.value, 10))}
+              disabled={totalSnapshots <= 1}
+              className="w-full accent-indigo-600 cursor-pointer disabled:opacity-40"
+            />
+
+            <button
+              onClick={() => handleScrub(currentIndex + 1)}
+              disabled={currentIndex >= totalSnapshots - 1}
+              className="rounded p-1 text-slate-600 hover:bg-slate-200 disabled:opacity-30 transition"
+              title="Step Forward 1 Turn"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+
+        {/* Mode Navigation Tabs */}
+        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-3 sm:px-6 shrink-0 gap-2 overflow-x-auto">
+          <div className="flex space-x-1 shrink-0">
+            <button
+              onClick={() => setActiveTab("graph")}
+              className={`flex items-center space-x-1 sm:space-x-1.5 py-2 sm:py-2.5 px-2 sm:px-3 text-xs font-semibold border-b-2 transition ${
+                activeTab === "graph"
+                  ? "border-indigo-600 text-indigo-600"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <Network className="h-3.5 w-3.5" />
+              <span>Graph</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("counterfactual")}
+              className={`flex items-center space-x-1 sm:space-x-1.5 py-2 sm:py-2.5 px-2 sm:px-3 text-xs font-semibold border-b-2 transition ${
+                activeTab === "counterfactual"
+                  ? "border-indigo-600 text-indigo-600"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <SplitSquareVertical className="h-3.5 w-3.5" />
+              <span>Sandbox</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("json")}
+              className={`flex items-center space-x-1 sm:space-x-1.5 py-2 sm:py-2.5 px-2 sm:px-3 text-xs font-semibold border-b-2 transition ${
+                activeTab === "json"
+                  ? "border-indigo-600 text-indigo-600"
+                  : "border-transparent text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <Code2 className="h-3.5 w-3.5" />
+              <span>JSON</span>
+            </button>
+          </div>
+
+          {/* Counterfactual Quick Run Trigger */}
+          <div className="flex items-center space-x-2 shrink-0 py-1">
+            <button
+              onClick={handleRunCounterfactual}
+              disabled={isCfRunning || !sessionId}
+              className="inline-flex items-center space-x-1 sm:space-x-1.5 rounded-lg bg-indigo-600 px-2 sm:px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50 transition active:scale-95"
+            >
+              {isCfRunning ? (
+                <Sparkles className="h-3 w-3 animate-spin" />
+              ) : (
+                <Play className="h-3 w-3 fill-current" />
+              )}
+              <span className="hidden sm:inline">Re-run Simulation</span>
+              <span className="sm:hidden">Run</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Main Content Area */}
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-4 sm:space-y-5 bg-slate-50/50">
         {cfError && (
           <div className="rounded-lg bg-red-50 border border-red-200 p-3 text-xs text-red-700 flex items-center justify-between">
             <span>{cfError}</span>
@@ -493,5 +503,6 @@ export default function DebugPanel({
         )}
       </div>
     </div>
-  );
+  </>
+);
 }

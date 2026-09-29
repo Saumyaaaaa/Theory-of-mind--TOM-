@@ -111,19 +111,21 @@ def analyze_learner_turn(
 
 Assess the learner's state now."""
 
-    # Server-side structured output configuration
-    config = types.GenerateContentConfig(
-        system_instruction=build_system_instruction(concept_graph),
-        response_mime_type="application/json",
-        response_schema=CognitiveState,
-        temperature=0.1,
-        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
-    )
-
     models_to_try = [model] + [m for m in FALLBACK_MODELS if m != model]
     last_error = None
 
     for candidate_model in models_to_try:
+        # thinking_budget=0 is supported on gemini-2.5 models and eliminates ~5s of internal CoT reasoning
+        thinking_cfg = types.ThinkingConfig(thinking_budget=0) if "2.5" in candidate_model or "2.0" in candidate_model else None
+        config = types.GenerateContentConfig(
+            system_instruction=build_system_instruction(concept_graph),
+            response_mime_type="application/json",
+            response_schema=CognitiveState,
+            temperature=0.1,
+            thinking_config=thinking_cfg,
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+        )
+
         for attempt in range(1, max_retries + 1):
             try:
                 response = client.models.generate_content(
@@ -142,13 +144,13 @@ Assess the learner's state now."""
             except Exception as e:
                 last_error = e
                 err_str = str(e)
-                # If 503 or transient rate limit, back off and retry
+                # If 503 or transient rate limit, back off slightly and retry
                 if "503" in err_str or "UNAVAILABLE" in err_str or "429" in err_str:
-                    backoff = attempt * 3
+                    backoff = attempt * 1.5
                     print(f"[Agent A] Demand spike on {candidate_model} (attempt {attempt}/{max_retries}). Retrying in {backoff}s...")
                     time.sleep(backoff)
                 else:
-                    # Non-demand error: break to try fallback model
+                    # Non-demand error: break to try fallback model immediately
                     break
 
     raise RuntimeError(f"Agent A failed after trying models {models_to_try}: {last_error}")
