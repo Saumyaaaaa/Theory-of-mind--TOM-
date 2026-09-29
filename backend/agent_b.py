@@ -110,16 +110,19 @@ def draft_agent_b_response(
 
     full_prompt = "\n".join(prompt_parts)
 
-    config = types.GenerateContentConfig(
-        system_instruction=system_instruction,
-        temperature=0.2,
-        automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
-    )
-
     models_to_try = [model] + [m for m in FALLBACK_MODELS if m != model]
     last_err = None
 
     for candidate in models_to_try:
+        # thinking_budget=0 is supported on gemini-2.5 models and eliminates ~5s of internal CoT reasoning
+        thinking_cfg = types.ThinkingConfig(thinking_budget=0) if "2.5" in candidate or "2.0" in candidate else None
+        config = types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            temperature=0.2,
+            thinking_config=thinking_cfg,
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+        )
+
         try:
             response = client.models.generate_content(
                 model=candidate,
@@ -130,7 +133,7 @@ def draft_agent_b_response(
                 return response.text.strip()
         except Exception as e:
             last_err = e
-            time.sleep(2)
+            time.sleep(1)
             continue
 
     raise RuntimeError(f"Agent B failed across models {models_to_try}: {last_err}")
